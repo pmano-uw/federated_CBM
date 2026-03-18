@@ -1,0 +1,29 @@
+# Ignore all JSON and STAN files
+*.json
+*.stan
+
+figure/
+history/
+stan_file/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pye
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Virtual environments
+venv/
+.env/
+
+# Data files (if large/generated)
+*.txt      # remove this if you WANT .txt files tracked
+dataset/
+quad_dsignal_env/
+plot/
+quadratic_degradation_mcmc/
+quadratic_degradation_signal/
