@@ -1,0 +1,55 @@
+name: federated_maintenance
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.10
+
+  # Core Scientific
+  - numpy
+  - scipy
+  - pandas
+  - sympy
+
+  # Statistics & Probabilistic Programming
+  - statsmodels
+  - patsy
+  - pystan
+  - arviz
+
+  # Machine Learning
+  - scikit-learn
+  - joblib
+
+  # Bayesian / JAX-based
+  - jax
+  - jaxlib
+
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
+
+  # Notebooks & Development
+  - jupyter
+  - ipykernel
+  - ipywidgets
+  - tqdm
+
+  # Data I/O
+  - h5py
+  - openpyxl
+  - pyyaml
+
+  # Utilities
+  - networkx
+  - cloudpickle
+  - dill
+
+  # pip-only packages
+  - pip
+  - pip:
+    - numpyro
+    - httpstan

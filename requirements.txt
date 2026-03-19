@@ -1,0 +1,46 @@
+
+Copy
+
+# Core Scientific
+numpy
+scipy
+pandas
+sympy
+ 
+# Statistics & Probabilistic Programming
+statsmodels
+patsy
+pystan
+arviz
+numpyro
+httpstan
+ 
+# Machine Learning
+scikit-learn
+joblib
+ 
+# JAX
+jax
+jaxlib
+ 
+# Visualization
+matplotlib
+seaborn
+plotly
+ 
+# Notebooks & Development
+jupyter
+ipykernel
+ipywidgets
+tqdm
+ 
+# Data I/O
+h5py
+openpyxl
+pyyaml
+ 
+# Utilities
+networkx
+cloudpickle
+dill
+ 
