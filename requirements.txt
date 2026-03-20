@@ -1,5 +1,4 @@
 
-Copy
 
 # Core Scientific
 numpy
@@ -10,10 +9,10 @@ sympy
 # Statistics & Probabilistic Programming
 statsmodels
 patsy
-pystan
 arviz
 numpyro
 httpstan
+cmdstanpy
  
 # Machine Learning
 scikit-learn

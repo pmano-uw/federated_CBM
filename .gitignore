@@ -20,10 +20,15 @@ __pycache__/
 venv/
 .env/
 
-# Data files (if large/generated)
-*.txt      # remove this if you WANT .txt files tracked
+# Data files 
+*.txt   
 dataset/
 quad_dsignal_env/
 plot/
 quadratic_degradation_mcmc/
-quadratic_degradation_signal/venv/
+quadratic_degradation_signal/
+fed_maintenance_env/
+
+linear_degradation_signal/simulation_results/
+linear_num_exp/experiment_results/
+linear_num_exp_policy/experiment_results/
