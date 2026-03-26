@@ -5,8 +5,8 @@ import copy
 import os
 import time
 import pandas as pd
+from contextlib import nullcontext
 
-import pystan
 import multiprocessing as mp
 from tqdm import tqdm
 from joblib import Parallel, delayed
@@ -37,18 +37,19 @@ def reset_EP_priors(ev_initial, cov_initial, args):
 
     return r, Q, r_list, Q_list
 
-def update_posterior(args, diff_lk_input, noise):    
+def update_posterior(args, diff_lk_input, noise, rng):    
     # Initialize memories
     mu_hist = np.zeros((args['n_chains'], args['gibbs_T']))
     Sigma_hist = np.zeros((args['n_chains'], args['gibbs_T']))
     betas_hist = np.zeros((args['N'], args['n_chains'], args['gibbs_T']))
-    # print(diff_lk_input)
+
     # Run Gibbs
     for chain in range(args['n_chains']):
         # Randomly sample the starting point according to the prior
-        mu = stats.norm.rvs(loc=args['mu_mu'], scale=args['Sigma_mu'])
-        Sigma = stats.invgamma.rvs(a=args['alpha_Sigma'], scale=args['beta_Sigma'])
-        betas = stats.norm.rvs(loc=mu, scale=Sigma, size=args['N'])
+        mu = stats.norm.rvs(loc=args['mu_mu'], scale=args['Sigma_mu'], random_state=rng)
+        Sigma = stats.invgamma.rvs(a=args['alpha_Sigma'], scale=args['beta_Sigma'], random_state=rng)
+        betas = stats.norm.rvs(loc=mu, scale=Sigma, size=args['N'], random_state=rng)
+        
         for t in range(args['gibbs_T']):      
             # Get a sample from mu
             precision = 1 / args['Sigma_mu']**2 + args['N'] / Sigma**2
@@ -57,13 +58,13 @@ def update_posterior(args, diff_lk_input, noise):
             mean = linear_shift / precision
             var = 1 / precision
 
-            new_mu = stats.norm.rvs(loc=mean, scale=np.sqrt(var))
+            new_mu = stats.norm.rvs(loc=mean, scale=np.sqrt(var), random_state=rng)
 
             # Get a sample from Sigma
             alpha_param = args['alpha_Sigma'] + args['N'] / 2
             beta_param = args['beta_Sigma'] + np.sum(betas - new_mu)**2 / 2
             
-            new_Sigma = np.sqrt(stats.invgamma.rvs(a=alpha_param, scale=beta_param))
+            new_Sigma = np.sqrt(stats.invgamma.rvs(a=alpha_param, scale=beta_param, random_state=rng))
 
             # Get samples for betas
             # Initialize empty betas
@@ -76,7 +77,7 @@ def update_posterior(args, diff_lk_input, noise):
                 diff_lk_list = lk_list_n[:, 1]
 
                 num_data = len(diff_lk_list)
-                state_info = np.sum(diff_lk_list) + np.random.laplace(scale=args['lap_noise'])
+                state_info = np.sum(diff_lk_list) + rng.laplace(scale=args['lap_noise'])
                 # print(noise[int(k_list[-1])])
                 
                 precision = num_data * args['delta']**2 / args['sigma0']**2 + 1 / Sigma**2
@@ -84,7 +85,7 @@ def update_posterior(args, diff_lk_input, noise):
                 
                 mean = linear_shift / precision
                 var = 1 / precision
-                new_betas[n] = stats.norm.rvs(loc=mean, scale=np.sqrt(var))
+                new_betas[n] = stats.norm.rvs(loc=mean, scale=np.sqrt(var), random_state=rng)
 
             # Update params
             mu = new_mu; Sigma = new_Sigma; betas = new_betas
@@ -128,9 +129,12 @@ def update_isolated_posterior(args, diff_lk_input):
 
     return mu0_mean, mu0_std
 
-def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
+def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args, rng):
     d = args['d']
+    ep_show_console = bool(args.get('ep_show_console', False))
+    ep_log_site = bool(args.get('ep_log_site', False))
     for c in range(args['C']):
+        # print(f"[EP] round={c+1}/{args['C']} start")
         # Device-side
         r_delta = 0
         Q_delta = 0
@@ -152,28 +156,53 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
             # Run MCMC
             mu_cavity = np.linalg.solve(Q_cavity, r_cavity)
             Sigma_cavity = CholeskyAlgorithm(np.linalg.inv(Q_cavity), args['epsilon'])
-            # print(f"C {c} Site {i} | mu = {mu_cavity.flatten()}, sigma = {Sigma_cavity.flatten()}")
+            if ep_log_site:
+                print(
+                    f"[EP] round={c+1} site={i} "
+                    f"mu_cavity={mu_cavity.flatten().tolist()} "
+                    f"sigma_diag={np.diag(Sigma_cavity).tolist()} "
+                    f"n_obs={len(lk_list)}"
+                )
 
             # Check symmetry
-            # if ~check_symmetric(Sigma_cavity):
-            #     off_diag = max(Sigma_cavity[0, 1], Sigma_cavity[1, 0])
-            #     Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = off_diag
+            if not check_symmetric(Sigma_cavity):
+                off_diag = max(Sigma_cavity[0, 1], Sigma_cavity[1, 0])
+                Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = off_diag
 
-            # if Sigma_cavity[0, 1] < 1e-4:
-            #     Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
+            if Sigma_cavity[0, 1] < 1e-4:
+                Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
 
             # Use stan
             dat = {
                 "N": len(lk_list), "Delta": args['delta'], "sigma_0": args['sigma0'].item(),
                 "Delta_l_k": lk_list.tolist(), "k": k_list.tolist(), "mu_i": mu_cavity.flatten(), "Sigma_i": Sigma_cavity
             }
+            stan_seed = int(rng.integers(1, 2**31 - 1))
             try:
-                with suppress_stdout_stderr():
-                    fit = model.sample(data=dat, iter_sampling=2500, iter_warmup=1000, parallel_chains=4, show_progress=False)
+                context_mgr = suppress_stdout_stderr() if not ep_show_console else nullcontext()
+                with context_mgr:
+                    fit = model.sample(
+                        data=dat,
+                        iter_sampling=2500,
+                        iter_warmup=1000,
+                        parallel_chains=4,
+                        seed=stan_seed,
+                        show_console=ep_show_console,
+                        show_progress=False
+                    )
 
             except RuntimeError as e:
-                print(e)
-                print(Sigma_cavity)
+                print(
+                    f"[EP][ERROR] hybrid sampling failed "
+                    f"(round={c+1}, site={i}, stan_seed={stan_seed}, n_obs={len(lk_list)})"
+                )
+                print(f"[EP][ERROR] mu_cavity={mu_cavity.flatten().tolist()}")
+                print(f"[EP][ERROR] sigma_diag={np.diag(Sigma_cavity).tolist()}")
+                print(f"[EP][ERROR] sigma_matrix=\n{Sigma_cavity}")
+                raise RuntimeError(
+                    f"EP hybrid sampling failed at round={c+1}, site={i}, stan_seed={stan_seed}. "
+                    f"Set ep_show_console=True to see Stan console output."
+                ) from e
 
             df_fit = fit.draws_pd()
             hybrid_samples = df_fit[['mu', 'tau']].values
@@ -183,40 +212,6 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
             cov_hybrid = np.cov(hybrid_samples.T)
             # print(f"C {c} Site {i} | new mu (stan) = {mu_hybrid.flatten()}")
             # print(cov_hybrid)
-
-            # Run Importance sampling
-            # Sample from proposal distributions
-            # mu_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-            # Sigma_samples = stats.lognorm.rvs(s=1, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'], size=args['num_prop'])
-            # x_samples = np.concatenate((mu_samples.reshape(-1, 1), Sigma_samples.reshape(-1, 1)), axis=-1)
-            
-            # # Calculate weight
-            # # Starting from log target
-            # mu_scaled = mu_samples * args['delta']
-            # Sigma_scaled = Sigma_samples * args['delta']**2 + args['sigma0']**2
-            # log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity)
-            
-            # for lk in lk_list:
-            #     log_target += (-0.5*np.log(2*np.pi*Sigma_scaled)-0.5*(lk - mu_scaled)**2/Sigma_scaled)
-
-            # # Then, compute proposal distribution
-            # log_proposal = stats.norm.logpdf(mu_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-            #                 stats.norm.pdf(Sigma_samples, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'])
-
-            # # Compute weight
-            # weight = np.exp(log_target - log_proposal)
-            # # weight = np.where(weight==0, 1e-8, weight)
-            # weighted_samples = np.multiply(weight.reshape(-1, 1), x_samples)
-
-            # normalized_weight = weight/np.sum(weight)
-            # # non_zero_weight_idx = np.nonzero(normalized_weight)[0]
-            # non_zero_weight = normalized_weight[normalized_weight!=0]
-            
-            # sample_size = args['num_target'] if args['num_target'] <= len(non_zero_weight) else len(non_zero_weight)
-
-            # # Resample
-            # idx = np.random.choice(range(args['num_prop']), replace=False, p=normalized_weight, size=sample_size)
-            # ind_samples = x_samples[idx, :]
 
             # # Calc stats
             # mu_hybrid = np.sum(weighted_samples, axis=0) / np.sum(weight)
@@ -251,21 +246,16 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
         # Check for convergence
         mu_old = np.linalg.solve(Q_old, r_old)
         mu = np.linalg.solve(Q, r)
-
-        # print(f"mu = {mu.flatten()}")
-        # print(f"Communication round: {c}")
-        # print(f"r gap = {r_delta}")
-        # print(f"r = {r.flatten()}")
-        # print(f"mu gap = {np.linalg.norm(mu - mu_old)}")
-        # print('-'*30)
+        # print(f"[EP] round={c+1}/{args['C']} mu_gap={np.linalg.norm(mu - mu_old):.6e}")
         if np.linalg.norm(mu - mu_old) < args['ep_tol']:
             return r, Q, r_list, Q_list
 
     return r, Q, r_list, Q_list
 
-def device_posterior_update(r, Q, r_list, Q_list, diff_lk_list, model, args):
+def device_posterior_update(r, Q, r_list, Q_list, diff_lk_list, model, args, rng):
     mu_list = []
     sigma_list = []
+    ep_show_console = bool(args.get('ep_show_console', False))
     
     d = args['d']
     N = args['N']
@@ -285,38 +275,13 @@ def device_posterior_update(r, Q, r_list, Q_list, diff_lk_list, model, args):
         Sigma_cavity = CholeskyAlgorithm(np.linalg.inv(Q_cavity), args['epsilon'])
         # print(f"Site {i+1} | {mu_cavity.flatten()} | {Sigma_cavity.flatten()}")
 
-        # if Sigma_cavity[0, 1] < 1e-8:
-            # Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
+        if not check_symmetric(Sigma_cavity):
+            off_diag = max(Sigma_cavity[0, 1], Sigma_cavity[1, 0])
+            Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = off_diag
 
-        # Run Importance sampling
-        # Sample from proposal distributions
-        # mu_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-        # beta_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-        # Sigma_samples = stats.lognorm.rvs(s=1, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'], size=args['num_prop'])
-        # x_samples = np.concatenate((mu_samples.reshape(-1, 1), Sigma_samples.reshape(-1, 1)), axis=-1)
+        if Sigma_cavity[0, 1] < 1e-8:
+            Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
 
-        # # Calculate weight
-        # # Starting from log target
-        # log_pdf_lks = np.zeros(args['num_prop'])
-        # for lk in lk_list:
-        #     log_pdf_lks += (-0.5*np.log(2*np.pi*args['sigma0']**2)-0.5*(lk - beta_samples * args['delta'])**2/args['sigma0']**2)
-        # log_pdf_beta = -0.5 * np.log(2*np.pi*Sigma_samples) - 0.5 * (beta_samples - mu_samples)**2 / Sigma_samples
-        # log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity) + log_pdf_beta + log_pdf_lks
-        # # Then, compute proposal distribution
-        # log_proposal = stats.norm.logpdf(mu_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-        #                  stats.norm.logpdf(beta_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-        #                  stats.norm.pdf(Sigma_samples, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'])
-
-        # # Compute weight
-        # weight = np.exp(log_target - log_proposal)
-        # if np.all(weight == 0):
-        #     Sigma_cavity = np.eye(2)*args['epsilon']
-        #     log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity) + log_pdf_beta + log_pdf_lks
-        #     weight = np.exp(log_target - log_proposal)
-        # # weight = np.where(weight==0, 1e-8, weight)
-
-        # beta_mean = np.sum(np.multiply(weight, beta_samples)) / np.sum(weight)
-        # beta_std = 1
 
         dat = {
             "N": len(lk_list),
@@ -328,8 +293,31 @@ def device_posterior_update(r, Q, r_list, Q_list, diff_lk_list, model, args):
             "Sigma_i": Sigma_cavity
         }
 
-        with suppress_stdout_stderr():
-            fit_pred = model.sample(data=dat, iter_sampling=5000, iter_warmup=2500, parallel_chains=4, adapt_delta=0.99, show_progress=False)
+        stan_seed = int(rng.integers(1, 2**31 - 1))
+        context_mgr = suppress_stdout_stderr() if not ep_show_console else nullcontext()
+        try:
+            with context_mgr:
+                fit_pred = model.sample(
+                    data=dat,
+                    iter_sampling=5000,
+                    iter_warmup=2500,
+                    parallel_chains=4,
+                    adapt_delta=0.99,
+                    seed=stan_seed,
+                    show_console=ep_show_console,
+                    show_progress=False
+                )
+        except RuntimeError as e:
+            print(
+                f"[EP][ERROR] predictive sampling failed "
+                f"(site={i}, stan_seed={stan_seed}, n_obs={len(lk_list)})"
+            )
+            print(f"[EP][ERROR] mu_cavity={mu_cavity.flatten().tolist()}")
+            print(f"[EP][ERROR] sigma_diag={np.diag(Sigma_cavity).tolist()}")
+            raise RuntimeError(
+                f"EP predictive sampling failed at site={i}, stan_seed={stan_seed}. "
+                f"Set ep_show_console=True to see Stan console output."
+            ) from e
 
         df_fit_pred = fit_pred.draws_pd()
         beta_samples = df_fit_pred['beta_i'].values

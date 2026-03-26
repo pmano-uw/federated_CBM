@@ -49,6 +49,11 @@ def load_data(args):
         
     else:
         print("Specify a valid argument for dataset")
+
+    # Ensure each column is non-negative while preserving within-column differences.
+    col_min = df.min(axis=0)
+    shift = (-col_min).clip(lower=0)
+    df = df.add(shift, axis=1)
     return df
 
 def process_dataframe(mat, args):

@@ -8,12 +8,20 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 
-echo "dtsrting"
+echo "Starting experiments"
 
-for noise in 1 3; do \
-    python3 main.py  --savelog  --experiment="collaborative" --lap-noise=$noise --dataset "nasa1" --num-site 60
+RUN_ID=$(date +"%Y-%m-%d-%H-%M-%S")
+RUN_DIR="experiment_results/run_${RUN_ID}"
+mkdir -p "$RUN_DIR"
+
+echo "Saving all experiment outputs to: $RUN_DIR"
+
+for noise in 1 3; do
+    echo "Running algorithm: collaborative (dataset=nasa1, lap_noise=$noise)" && \
+    python3 main.py --savelog --experiment="collaborative" --lap-noise=$noise --dataset "nasa1" --output-dir "$RUN_DIR"
 done
 
-for experiment in collaborative isolated EP; do \
-    python3 main.py  --savelog  --experiment=$experiment --dataset "nasa1" --num-site 60
+for experiment in collaborative isolated EP; do
+    echo "Running algorithm: $experiment (dataset=nasa1, lap_noise=0)" && \
+    python3 main.py --savelog --experiment=$experiment --dataset "nasa1" --output-dir "$RUN_DIR"
 done

@@ -17,11 +17,14 @@ def discretize_states(lk_list, bins):
     discrete_state_space = np.digitize(lk_list, bins, right=False)
     return discrete_state_space
 
-def simulation(args, j, experiment):
+def simulation(args, sim_round, experiment):
     # Define variables
-    seed = args['seed']; random.seed(args['seed']); np.random.seed(args['seed'])
+    run_seed = int(args['seed']) + int(sim_round)
+    random.seed(run_seed)
+    np.random.seed(run_seed)
+    rng = np.random.default_rng(run_seed)
 
-    print(f"Running simulation #{j}")
+    print(f"Running simulation #{sim_round}")
     d = args['d']
 
     # Create bins to discretize states
@@ -30,7 +33,25 @@ def simulation(args, j, experiment):
 
     # Import data for all the sites
     df = load_data(args)
+
+    # Calculate estimated variance
+    burn_in_data = df.iloc[:args['initial_t'], :]
+    increments = burn_in_data.diff()
     
+    all_increments = increments.values.flatten()
+    all_increments = all_increments[~np.isnan(all_increments)]
+    
+    # Ensure we have enough data points to calculate variance, otherwise use a fallback
+    if len(all_increments) > 1:
+        empirical_variance = np.var(all_increments, ddof=1)
+        sigma_0 = np.array([np.sqrt(empirical_variance)])
+    else:
+        # Fallback to an arbitrary small prior if initial_t is 1
+        sigma_0 = np.array([1.0]) 
+
+    args['sigma0'] = sigma_0
+    args['sigma0_initial'] = sigma_0.item() # Keep this clean fallback copy
+
     # Specify the max length of transition
     N_data = df.shape[1] 
 
@@ -39,17 +60,28 @@ def simulation(args, j, experiment):
     hist_cost_tensor = np.zeros((args['N'], args['M'], args['K']))
     discrete_state_1 = np.zeros((args['N'], args['M'], args['K']))
 
-    # Randomize indices
-    idx_list = np.arange(N_data)
-    np.random.shuffle(idx_list)
-    idx_list = [idx_list[n*args['M']: (n+1)*args['M']].tolist() for n in range(args['N'])]
+    # Build a heterogeneity-reduced split across sites:
+    # rank units by degradation trend, then distribute round-robin so each site gets a mixed profile.
+    if args['N'] * args['M'] > N_data:
+        raise ValueError(f"N*M={args['N'] * args['M']} exceeds available units={N_data}")
+
+    effective_K = min(args['K'], df.shape[0])
+    unit_values = df.iloc[:effective_K, :].to_numpy()
+    denom = max(effective_K - 1, 1)
+    degradation_score = (unit_values[-1, :] - unit_values[0, :]) / denom
+    sorted_idx = np.argsort(degradation_score)[:args['N'] * args['M']]
+
+    idx_list = [[] for _ in range(args['N'])]
+    for pos, unit_idx in enumerate(sorted_idx):
+        site = pos % args['N']
+        idx_list[site].append(int(unit_idx))
     # print(idx_list)
     # Process data
     for n in range(args['N']):
         for m in range(args['M']):
             # Add noise
             if experiment == 'collaborative' and args['lap_noise'] > 0:
-                noise = np.random.laplace(scale=args['lap_noise'], size=args['K'])
+                noise = rng.laplace(scale=args['lap_noise'], size=args['K'])
             else:
                 noise = np.zeros(args['K'])
             hist_lk_tensor[n, m, :] = df.iloc[:args['K'], idx_list[n][m]]
@@ -108,6 +140,9 @@ def simulation(args, j, experiment):
             hybrid_dist_model = CmdStanModel(stan_file="stan_file/hybrid_posterior.stan", model_name=f"hybrid_distribution")
             predictive_model = CmdStanModel(stan_file="stan_file/predictive_posterior.stan", model_name=f"predictive_posterior")
 
+        # Initialize EP approximation once and keep updating it across windows.
+        r, Q, r_list, Q_list = reset_EP_priors(ev_initial, cov_initial, args)
+
     new_bins = copy.deepcopy(bins_state_1)
     new_bins[1:] = bins_state_1[1:] - np.diff(bins_state_1)[0] / 2
     new_bins = np.append(new_bins, args['s1_limit'])
@@ -149,51 +184,55 @@ def simulation(args, j, experiment):
                 # Increment the counters
                 m_counter[i] += 1
                 k_counter[i] = 0
-                print(f"Round {j} | t = {t} | k = {k} | site = {i} | Count: {m_counter[:10]} | cost = {cost:.6f} | {c_state_1:.4f} | {d_state_1}")
+                print(f"Round {sim_round} | t = {t} | k = {k} | site = {i} | Count: {m_counter[:10]} | cost = {cost:.6f} | {c_state_1:.4f} | {d_state_1}")
                 # print(np.mean(np.abs(mu0_mean - mu1_true)))
                 # print(pi)
                 # print('-'*30)
                 
         if t % args['window'] == 0:
-            # print("Updating posterior...")
-            # Update posterior
             if experiment == 'collaborative': 
-                mu0_mean, mu0_cov = update_posterior(args, hist_lk_diff_list, noise)
-                # mu0_mean_iso, mu0_cov_iso = update_isolated_posterior(args, hist_lk_diff_list)
-                # gap_collab = np.linalg.norm(mu1_true - mu0_mean.flatten())
-                # gap_iso = np.linalg.norm(mu1_true - mu0_mean_iso.flatten())
+                mu0_mean, mu0_cov = update_posterior(args, hist_lk_diff_list, noise, rng)
             elif experiment == 'isolated':
-                # print('Updating posterior')
+                # Calculate site-specific sigma_0
+                local_sigma0_arr = np.zeros(args['N'])
+                for site in range(args['N']):
+                    local_diffs = [item[1] for item in hist_lk_diff_list[site]]
+                    # Require at least 2 points to calculate standard deviation
+                    if len(local_diffs) > 1:
+                        local_sigma0_arr[site] = np.std(local_diffs, ddof=1)
+                    else:
+                        local_sigma0_arr[site] = args['sigma0_initial']
+                
+                # Assign the array to args for the posterior update
+                args['sigma0_array'] = local_sigma0_arr
                 mu0_mean, mu0_cov = update_isolated_posterior(args, hist_lk_diff_list)
+
             elif experiment == 'EP':
-                r, Q, r_list, Q_list = reset_EP_priors(ev_initial, cov_initial, args)
-                r, Q, r_list_new, Q_list_new = update_EP_posterior(r, Q, r_list, Q_list, hist_lk_diff_list, hybrid_dist_model, args)
-                mu0_mean, mu0_cov = device_posterior_update(r, Q, r_list_new, Q_list_new, hist_lk_diff_list, predictive_model, args)
+                r, Q, r_list, Q_list = update_EP_posterior(r, Q, r_list, Q_list, hist_lk_diff_list, hybrid_dist_model, args, rng)
+                mu0_mean, mu0_cov = device_posterior_update(r, Q, r_list, Q_list, hist_lk_diff_list, predictive_model, args, rng)
 
             # Update sample variance
             data_list = []
 
             mu_mean_hist.append(mu0_mean.tolist())
             mu_cov_hist.append(mu0_cov.tolist())
-            # gap = np.linalg.norm(mu1_true - mu0_mean.flatten())
-            # print(f"t = {t} | collab gap = {gap_collab}, iso gap = {gap_iso}")
-            # print("Running VI...")
+            
             # Run VI for each site
             for site in range(args['N']):
-                values[site], pis[site], probs = value_iteration(mu0_mean[site], mu0_cov[site], bins_state_1, args)
-                # Comparing policies, values and probs
-                # hist_value_gap[site].append(np.linalg.norm(values_opt - values[site], ord='fro').item())
-                # hist_policy_gap[site].append(np.linalg.norm(opt_pis[site, :, :] - pis[site, :, :], ord='fro').item())
+                # Inject local sigma_0 for this specific site's SMDP transition probabilities
+                if experiment == 'isolated' and 'sigma0_array' in args:
+                    args['sigma0'] = np.array([args['sigma0_array'][site]])
 
-                # Calc Hellinger distance
-                # h_dist = 0.5 * np.sum((np.sqrt(np.abs(opt_probs[site, :, :, :])) - np.sqrt(np.abs(probs)))**2, axis=-1)
-                # hist_prob_gap[site].append(np.mean(h_dist).item())
+                values[site], pis[site], probs = value_iteration(mu0_mean[site], mu0_cov[site], bins_state_1, args)
                 
-                for j in range(len(hist_lk_diff_list[site])):
-                    data_list.append(hist_lk_diff_list[site][j][1])
+                # aggregate globally if we are doing a collaborative/EP run
+                if experiment != 'isolated':
+                    for j in range(len(hist_lk_diff_list[site])):
+                        data_list.append(hist_lk_diff_list[site][j][1])
             
-            # Calc sample variance
-            args['sigma0'] = np.std(data_list)
+            # Calc global sample variance ONLY for collaborative/EP
+            if experiment != 'isolated' and len(data_list) > 1:
+                args['sigma0'] = np.array([np.std(data_list, ddof=1)])
 
         # Increment k at the end of every sweep
         k_counter += 1 
