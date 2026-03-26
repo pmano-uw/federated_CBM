@@ -40,14 +40,14 @@ linear_num_exp_policy/experiment_results/*
 
 !linear_num_exp/experiment_results/nasal_100_2025-01-27-11-48-34.json
 
-!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_collaborative_/result.json
-!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_isolated_/result.json
-!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_EP_/result.json
-!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_1.0_nasal_collaborative_/result.json
-!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_3.0_nasal_collaborative_/result.json
+!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_collaborative_
+!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_isolated_
+!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_0_nasal_EP_
+!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_1.0_nasal_collaborative_
+!linear_num_exp_policy/experiment_results/run_2026-03-22-20-19-15/50_2_15_3.0_nasal_collaborative_
 
-!linear_degradation_signal/simulation_results/50_5_10_0_collaborative_2024-09-29-09-53-23/result.json
-!linear_degradation_signal/simulation_results/50_5_10_0_isolated_2024-09-29-11-23-45/result.json
-!linear_degradation_signal/simulation_results/50_5_10_0_EP_2024-09-29-16-25-48/result.json
-!linear_degradation_signal/simulation_results/50_5_10_1.0_collaborative_2024-10-08-00-17-13/result.json
-!linear_degradation_signal/simulation_results/50_5_10_3.0_collaborative_2024-10-07-17-49-10/result.json
+!linear_degradation_signal/simulation_results/50_5_10_0_collaborative_2024-09-29-09-53-23
+!linear_degradation_signal/simulation_results/50_5_10_0_isolated_2024-09-29-11-23-45
+!linear_degradation_signal/simulation_results/50_5_10_0_EP_2024-09-29-16-25-48
+!linear_degradation_signal/simulation_results/50_5_10_1.0_collaborative_2024-10-08-00-17-13
+!linear_degradation_signal/simulation_results/50_5_10_3.0_collaborative_2024-10-07-17-49-10
