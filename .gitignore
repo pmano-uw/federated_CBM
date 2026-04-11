@@ -1,11 +1,7 @@
-# Ignore all JSON and STAN files
-*.json
-*.stan
-
 figure/
 # Changed to /* to allow exceptions inside
+*.json
 history/*
-stan_file/
 
 # Python compiled files
 __pycache__/
@@ -29,3 +25,7 @@ plot/
 quadratic_degradation_mcmc/
 quadratic_degradation_signal/
 fed_maintenance_env/
+linear_degradation_mcmc/history/
+linear_num_exp_policy/experiment_results/
+linear_num_exp/experiment_results/
+simulation_results/

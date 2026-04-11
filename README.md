@@ -12,6 +12,8 @@ Otherwise, install dependencies using
 pip install -r requirements.txt
 ```
 
+The STAN files may need to be recompiled if running for the first time. To do this, delete the files `hybrid_posterior` and `predictive_posterior` and run `main.py` once to allow STAN to automatically compile `.stan` files.
+
 ## Replication of the simulation study for parameter estimation and optimal policy derivation
 * The results from section 7.1 (parameter estimation) can be replicated by running the notebook `Plot.ipynb` in the folder `linear_degradation_mcmc`.
 * The results from section 7.2 (optimal policy), 7.3 (discounted cost), and 7.4 (value function) can be replicated by running the notebook `Plot.ipynb` in the folder `linear_degradation_signal`.
