@@ -155,12 +155,12 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
             # print(f"C {c} Site {i} | mu = {mu_cavity.flatten()}, sigma = {Sigma_cavity.flatten()}")
 
             # Check symmetry
-            # if ~check_symmetric(Sigma_cavity):
-            #     off_diag = max(Sigma_cavity[0, 1], Sigma_cavity[1, 0])
-            #     Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = off_diag
+            if not check_symmetric(Sigma_cavity):
+                off_diag = max(Sigma_cavity[0, 1], Sigma_cavity[1, 0])
+                Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = off_diag
 
-            # if Sigma_cavity[0, 1] < 1e-4:
-            #     Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
+            if Sigma_cavity[0, 1] < 1e-4:
+                Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
 
             # Use stan
             dat = {
@@ -182,51 +182,7 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
             # Extract r_hybrid and Q_hybrid
             mu_hybrid = np.mean(hybrid_samples, axis=0).reshape(-1, 1)
             cov_hybrid = np.cov(hybrid_samples.T)
-            # print(f"C {c} Site {i} | new mu (stan) = {mu_hybrid.flatten()}")
-            # print(cov_hybrid)
-
-            # Run Importance sampling
-            # Sample from proposal distributions
-            # mu_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-            # Sigma_samples = stats.lognorm.rvs(s=1, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'], size=args['num_prop'])
-            # x_samples = np.concatenate((mu_samples.reshape(-1, 1), Sigma_samples.reshape(-1, 1)), axis=-1)
-            
-            # # Calculate weight
-            # # Starting from log target
-            # mu_scaled = mu_samples * args['delta']
-            # Sigma_scaled = Sigma_samples * args['delta']**2 + args['sigma0']**2
-            # log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity)
-            
-            # for lk in lk_list:
-            #     log_target += (-0.5*np.log(2*np.pi*Sigma_scaled)-0.5*(lk - mu_scaled)**2/Sigma_scaled)
-
-            # # Then, compute proposal distribution
-            # log_proposal = stats.norm.logpdf(mu_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-            #                 stats.norm.pdf(Sigma_samples, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'])
-
-            # # Compute weight
-            # weight = np.exp(log_target - log_proposal)
-            # # weight = np.where(weight==0, 1e-8, weight)
-            # weighted_samples = np.multiply(weight.reshape(-1, 1), x_samples)
-
-            # normalized_weight = weight/np.sum(weight)
-            # # non_zero_weight_idx = np.nonzero(normalized_weight)[0]
-            # non_zero_weight = normalized_weight[normalized_weight!=0]
-            
-            # sample_size = args['num_target'] if args['num_target'] <= len(non_zero_weight) else len(non_zero_weight)
-
-            # # Resample
-            # idx = np.random.choice(range(args['num_prop']), replace=False, p=normalized_weight, size=sample_size)
-            # ind_samples = x_samples[idx, :]
-
-            # # Calc stats
-            # mu_hybrid = np.sum(weighted_samples, axis=0) / np.sum(weight)
-            # mu_hybrid = mu_hybrid.reshape(-1, 1)
-            # cov_hybrid = np.cov(ind_samples.T)
-            # print(f"C {c} Site {i} | new mu = {mu_hybrid.flatten()}")
-            # print(cov_hybrid)
-            # print('-'*30)
-            
+        
             r_hybrid = np.linalg.solve(cov_hybrid, mu_hybrid)
             Q_hybrid = np.linalg.inv(cov_hybrid)
 
@@ -253,12 +209,6 @@ def update_EP_posterior(r, Q, r_list, Q_list, diff_lk_input, model, args):
         mu_old = np.linalg.solve(Q_old, r_old)
         mu = np.linalg.solve(Q, r)
 
-        # print(f"mu = {mu.flatten()}")
-        # print(f"Communication round: {c}")
-        # print(f"r gap = {r_delta}")
-        # print(f"r = {r.flatten()}")
-        # print(f"mu gap = {np.linalg.norm(mu - mu_old)}")
-        # print('-'*30)
         if np.linalg.norm(mu - mu_old) < args['ep_tol']:
             return r, Q, r_list, Q_list
 
@@ -285,40 +235,6 @@ def device_posterior_update(r, Q, r_list, Q_list, diff_lk_list, model, args):
         # Run MCMC
         mu_cavity = np.linalg.solve(Q_cavity, r_cavity)
         Sigma_cavity = CholeskyAlgorithm(np.linalg.inv(Q_cavity), args['epsilon'])
-        # print(f"Site {i+1} | {mu_cavity.flatten()} | {Sigma_cavity.flatten()}")
-
-        # if Sigma_cavity[0, 1] < 1e-8:
-            # Sigma_cavity[0, 1] = Sigma_cavity[1, 0] = 0
-
-        # Run Importance sampling
-        # Sample from proposal distributions
-        # mu_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-        # beta_samples = stats.norm.rvs(loc=args['prop_mu_mu'], scale=args['prop_std_mu'], size=args['num_prop'])
-        # Sigma_samples = stats.lognorm.rvs(s=1, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'], size=args['num_prop'])
-        # x_samples = np.concatenate((mu_samples.reshape(-1, 1), Sigma_samples.reshape(-1, 1)), axis=-1)
-
-        # # Calculate weight
-        # # Starting from log target
-        # log_pdf_lks = np.zeros(args['num_prop'])
-        # for lk in lk_list:
-        #     log_pdf_lks += (-0.5*np.log(2*np.pi*args['sigma0']**2)-0.5*(lk - beta_samples * args['delta'])**2/args['sigma0']**2)
-        # log_pdf_beta = -0.5 * np.log(2*np.pi*Sigma_samples) - 0.5 * (beta_samples - mu_samples)**2 / Sigma_samples
-        # log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity) + log_pdf_beta + log_pdf_lks
-        # # Then, compute proposal distribution
-        # log_proposal = stats.norm.logpdf(mu_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-        #                  stats.norm.logpdf(beta_samples, loc=args['prop_mu_mu'], scale=args['prop_std_mu']) + \
-        #                  stats.norm.pdf(Sigma_samples, loc=args['prop_mu_sigma'], scale=args['prop_std_sigma'])
-
-        # # Compute weight
-        # weight = np.exp(log_target - log_proposal)
-        # if np.all(weight == 0):
-        #     Sigma_cavity = np.eye(2)*args['epsilon']
-        #     log_target = stats.multivariate_normal.logpdf(x_samples, mean=mu_cavity.flatten(), cov=Sigma_cavity) + log_pdf_beta + log_pdf_lks
-        #     weight = np.exp(log_target - log_proposal)
-        # # weight = np.where(weight==0, 1e-8, weight)
-
-        # beta_mean = np.sum(np.multiply(weight, beta_samples)) / np.sum(weight)
-        # beta_std = 1
 
         dat = {
             "N": len(lk_list),
