@@ -18,8 +18,7 @@ __pycache__/
 venv/
 .env/
 
-# Data files 
-*.txt   
+# Data files   
 quad_dsignal_env/
 plot/
 quadratic_degradation_mcmc/
