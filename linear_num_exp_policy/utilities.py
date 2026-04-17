@@ -15,46 +15,63 @@ def MAPE(y_pred, y_test):
 
 def load_data(args):
     dataset_name, dataset_num = extract_prefix_and_number(args['dataset'])
+    thresholds = {} 
+    
     if dataset_name == 'nasa':
-        parent_path = Path.cwd().parent / Path("dataset")/ Path(dataset_name)
+        parent_path = Path.cwd().parent / Path("dataset") / Path(dataset_name)
         file_path = Path(f"train_FD00{int(dataset_num)}.txt")
-        df = pd.read_csv(parent_path/ file_path, sep=" ", header=None)
-        df.drop(columns=[26,27],inplace=True)
-        columns = ['unit_number','time_in_cycles','setting_1','setting_2','TRA','T2','T24','T30','T50','P2','P15','P30','Nf',
-                'Nc','epr','Ps30','phi','NRf','NRc','BPR','farB','htBleed','Nf_dmd','PCNfR_dmd','W31','W32' ]
-        df.columns = columns
-
-        df = df.loc[:, ['unit_number', 'time_in_cycles', 'T24']]
-        df = df.pivot(index='time_in_cycles', columns='unit_number', values='T24').reset_index(drop=True).dropna()
-        df.columns = [f'unit_{int(col)}' for col in df.columns]
-        df = df * 10
-
-        # Subtract by the first row
-        df = df - df.iloc[0]
-
-    elif dataset_name == 'battery':
-        parent_path = Path.cwd().parent / Path("dataset")
-        main_file_path = Path(f"battery_{int(dataset_num)}_main.csv")
-        sub_file_path = Path(f"battery_{int(dataset_num)}_sub.csv")
-        main_df = pd.read_csv(parent_path/ main_file_path, header=None)
-        sub_df = pd.read_csv(parent_path/ sub_file_path, header=None)
-
-        df = pd.concat([main_df, sub_df], axis=1).dropna().iloc[:256, :]
-        df.columns = [f"site_{i}" for i in range(1, 13)]
-        df = 10/df
-
-        df = df - df.iloc[0]
-        df = df*100
-        # print(df.iloc[:100, :].describe())
         
+        df = pd.read_csv(parent_path / file_path, sep=" ", header=None)
+        df.drop(columns=[26, 27], inplace=True)
+        
+        columns = ['unit_number','time_in_cycles','setting_1','setting_2','TRA','T2','T24','T30','T50','P2','P15','P30','Nf',
+                   'Nc','epr','Ps30','phi','NRf','NRc','BPR','farB','htBleed','Nf_dmd','PCNfR_dmd','W31','W32']
+        df.columns = columns
+        
+        # Isolate the target columns
+        df = df[['unit_number', 'time_in_cycles', 'T24']].copy()
+        
+        # 1. Calculate robust baseline (mean of first 10 cycles for each unit)
+        span_value = 15
+        baselines = df[df['time_in_cycles'] <= 10].groupby('unit_number')['T24'].mean()
+        df['T24_adj'] = df['T24'] - df['unit_number'].map(baselines)
+        df['T24_smoothed'] = df.groupby('unit_number')['T24_adj'].transform(lambda x: x.ewm(span=span_value, adjust=False).mean())
+        
+        # 2. Calculate RUL
+        max_cycles = df.groupby('unit_number')['time_in_cycles'].transform('max')
+        df['RUL'] = max_cycles - df['time_in_cycles']
+        
+        # 3. Pivot and isolate overlapping end-of-life phase
+        df_pivot = df.pivot(index='RUL', columns='unit_number', values='T24_adj')
+        df_pivot = df_pivot.dropna().sort_index(ascending=False)
+        
+        # --- NEW: Cut off the signal at the degradation horizon 'K' ---
+        if 'K' in args:
+            # Keep only the final K cycles (e.g., if K=50, keep RUL 49 down to 0)
+            df_pivot = df_pivot[df_pivot.index < args['K']]
+        
+        # 4. Force the start of this specific K-window to be exactly 0
+        # By doing this AFTER the cut, we measure the delta strictly within the horizon
+        df_pivot = df_pivot - df_pivot.iloc[0]
+        
+        # 5. Calculate new thresholds based on the isolated horizon curve
+        failure_values = df_pivot.loc[0]
+        thresholds['mean_failure'] = failure_values.mean()
+        thresholds['conservative_failure'] = failure_values.quantile(0.2)
+        
+        # 6. Reset index and format columns
+        df_pivot = df_pivot.reset_index(drop=True)
+        df_pivot.columns = [f'unit_{int(col)}' for col in df_pivot.columns]
+
+        # Filter only some sites
+        if args.get('scenario') == 1:
+            df_pivot = df_pivot.sample(axis=1, n=args['num_site'])
+
     else:
         print("Specify a valid argument for dataset")
+        df_pivot = None
 
-    # Ensure each column is non-negative while preserving within-column differences.
-    col_min = df.min(axis=0)
-    shift = (-col_min).clip(lower=0)
-    df = df.add(shift, axis=1)
-    return df
+    return df_pivot, thresholds
 
 def process_dataframe(mat, args):
     if args['scenario'] == 1:

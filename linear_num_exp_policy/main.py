@@ -34,7 +34,7 @@ if __name__ == '__main__':
         'mu_true': np.array([1]), 'Sigma_true': np.array([0.01]),
         'site_mu': np.array([[10], [1]]), 'site_Sigma': np.array([[10, 0], [0, 1]]),
         # Simulation params
-        'N': 50, 'M': 2, 'K': 60, 'S': 50, 'C': 3, 's1_limit': 16, 'r_limit': 15, 'd': 1, 'max_T': 5000,
+        'N': 50, 'M': 2, 'K': 60, 'S': 50, 'C': 5, 'd': 1, 'max_T': 5000,
         'prop_mu_mu': 5, 'prop_std_mu': 5, 'prop_mu_sigma': 0, 'prop_std_sigma': 1,
         'num_prop': 100000, 'num_target': 75000, 'ep_tol': 1e-3, 'initial_t': 5,
         # Value iteration params
@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
     if args['savelog']:
         output_dir = args['output_dir']
-        details = f"{args['N']}_{args['M']}_{args['r_limit']}_{args['lap_noise']}_{args['dataset']}_{args['experiment']}_"
+        details = f"{args['N']}_{args['M']}_{args['lap_noise']}_{args['dataset']}_{args['experiment']}_"
         # jour = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         output_dir = os.path.join(output_dir, details)
         

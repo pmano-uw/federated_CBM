@@ -26,13 +26,15 @@ def simulation(args, sim_round, experiment):
 
     print(f"Running simulation #{sim_round}")
     d = args['d']
+    
+    # Import data for all the sites
+    df, threshold = load_data(args)
+    args['r_limit'] = threshold['mean_failure']
+    args['s1_limit'] = args['r_limit'] + 1
 
     # Create bins to discretize states
     dataset_name, dataset_num = extract_prefix_and_number(args['dataset'])
     bins_state_1 = np.linspace(args['l_0'], args['s1_limit'], args['S']-1).flatten()
-
-    # Import data for all the sites
-    df = load_data(args)
 
     # Calculate estimated variance
     burn_in_data = df.iloc[:args['initial_t'], :]
@@ -185,9 +187,6 @@ def simulation(args, sim_round, experiment):
                 m_counter[i] += 1
                 k_counter[i] = 0
                 print(f"Round {sim_round} | t = {t} | k = {k} | site = {i} | Count: {m_counter[:10]} | cost = {cost:.6f} | {c_state_1:.4f} | {d_state_1}")
-                # print(np.mean(np.abs(mu0_mean - mu1_true)))
-                # print(pi)
-                # print('-'*30)
                 
         if t % args['window'] == 0:
             if experiment == 'collaborative': 
