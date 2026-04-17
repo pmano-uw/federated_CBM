@@ -16,12 +16,20 @@ mkdir -p "$RUN_DIR"
 
 echo "Saving all experiment outputs to: $RUN_DIR"
 
+# ... (Keep your SBATCH directives and RUN_DIR setup) ...
+
+echo "Saving all experiment outputs to: $RUN_DIR"
+
 for noise in 1 3; do
-    echo "Running algorithm: collaborative (dataset=nasa1, lap_noise=$noise)" && \
-    python3 main.py --savelog --experiment="collaborative" --lap-noise=$noise --dataset "nasa1" --output-dir "$RUN_DIR"
+    echo "Running algorithm: collaborative (dataset=nasa1, lap_noise=$noise)" 
+    python3 main.py --savelog --experiment="collaborative" --lap-noise=$noise --dataset "nasa1" --output-dir "$RUN_DIR" &
 done
 
 for experiment in collaborative EP isolated; do
-    echo "Running algorithm: $experiment (dataset=nasa1, lap_noise=0)" && \
-    python3 main.py --savelog --experiment=$experiment --dataset "nasa1" --output-dir "$RUN_DIR"
+    echo "Running algorithm: $experiment (dataset=nasa1, lap_noise=0)"
+    python3 main.py --savelog --experiment=$experiment --dataset "nasa1" --output-dir "$RUN_DIR" &
 done
+
+wait 
+
+echo "All 5 experiments completed!"
