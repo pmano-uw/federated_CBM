@@ -16,32 +16,70 @@ def MSE(y_pred, y_test):
 def MAPE(y_pred, y_test):
     return np.mean(np.abs((y_pred - y_test)), axis=0)
 
+import pandas as pd
+import numpy as np
+from pathlib import Path
+# Assuming extract_prefix_and_number is imported elsewhere
+
+import pandas as pd
+import numpy as np
+from pathlib import Path
+# Assuming extract_prefix_and_number is imported elsewhere
+
 def load_data(args):
     dataset_name, dataset_num = extract_prefix_and_number(args['dataset'])
+    thresholds = {} # Initialize dictionary to hold our calculated thresholds
+    
     if dataset_name == 'nasa':
-        parent_path = Path.cwd().parent / Path("dataset")/ Path(dataset_name)
+        parent_path = Path.cwd().parent / Path("dataset") / Path(dataset_name)
         file_path = Path(f"train_FD00{int(dataset_num)}.txt")
-        df = pd.read_csv(parent_path/ file_path, sep=" ", header=None)
-        df.drop(columns=[26,27],inplace=True)
+        
+        df = pd.read_csv(parent_path / file_path, sep=" ", header=None)
+        df.drop(columns=[26, 27], inplace=True)
+        
         columns = ['unit_number','time_in_cycles','setting_1','setting_2','TRA','T2','T24','T30','T50','P2','P15','P30','Nf',
-                'Nc','epr','Ps30','phi','NRf','NRc','BPR','farB','htBleed','Nf_dmd','PCNfR_dmd','W31','W32' ]
+                   'Nc','epr','Ps30','phi','NRf','NRc','BPR','farB','htBleed','Nf_dmd','PCNfR_dmd','W31','W32']
         df.columns = columns
-        print(np.max(df.groupby(["unit_number"]).max()['time_in_cycles'].values))
-        df = df.loc[:, ['unit_number', 'time_in_cycles', 'T24']]
-        df = df.pivot(index='time_in_cycles', columns='unit_number', values='T24').reset_index(drop=True).dropna()
-        df.columns = [f'unit_{int(col)}' for col in df.columns]
-
-        # Subtract by the first row
-        df = df - df.iloc[0]
+        
+        # Isolate the target columns
+        df = df[['unit_number', 'time_in_cycles', 'T24']].copy()
+        
+        # 1. Calculate robust baseline (mean of first 10 cycles for each unit)
+        baselines = df[df['time_in_cycles'] <= 10].groupby('unit_number')['T24'].mean()
+        df['T24_adj'] = df['T24'] - df['unit_number'].map(baselines)
+        
+        # 2. Calculate RUL to align the failure points
+        max_cycles = df.groupby('unit_number')['time_in_cycles'].transform('max')
+        df['RUL'] = max_cycles - df['time_in_cycles']
+        
+        # 3. Pivot using RUL as the index
+        df_pivot = df.pivot(index='RUL', columns='unit_number', values='T24_adj')
+        
+        # 4. Drop NA to get the dense overlapping phase, sort descending (High RUL down to 0 RUL)
+        df_pivot = df_pivot.dropna().sort_index(ascending=False)
+        
+        # --- THRESHOLD CALCULATION ---
+        # RUL = 0 represents the exact cycle of failure. We grab those values across all units.
+        failure_values = df_pivot.loc[0]
+        thresholds['mean_failure'] = failure_values.mean()
+        thresholds['conservative_failure'] = failure_values.quantile(0.10)
+        
+        # 5. Reset index for downstream compatibility
+        df_pivot = df_pivot.reset_index(drop=True)
+        
+        # Format column names to match original output
+        df_pivot.columns = [f'unit_{int(col)}' for col in df_pivot.columns]
 
         # Filter only some sites
-        if args['scenario'] == 1:
-            df = df.sample(axis=1, n=args['num_site'])
+        if args.get('scenario') == 1:
+            df_pivot = df_pivot.sample(axis=1, n=args['num_site'])
 
     else:
         print("Specify a valid argument for dataset")
+        df_pivot = None
 
-    return df
+    # Return both the dataframe and the calculated thresholds
+    return df_pivot, thresholds
 
 def process_dataframe(mat, args):
     if args['scenario'] == 1:

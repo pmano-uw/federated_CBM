@@ -27,7 +27,7 @@ if __name__ == '__main__':
         'sigma0': np.array([2]),
         'site_mu': np.array([[-10], [1]]), 'site_Sigma': np.array([[10, 0], [0, 1]]),
         # Simulation params
-        'seed': 1234, 'sim_num': 30, 'epsilon': 1e-3, 'C': 5, 'N': 10, 'M': 5, 'r_limit': 0.7, 't_limit': 20,
+        'seed': 1234, 'sim_num': 30, 'epsilon': 1e-3, 'C': 5, 'N': 10, 'M': 5, 't_limit': 20,
         'prop_mu_mu': 10, 'prop_std_mu': 20, 'prop_mu_sigma': 0, 'prop_std_sigma': 1,
         'num_prop': 100000, 'num_target': 10000, 'ep_tol': 1e-3,
         # Sampling parameters

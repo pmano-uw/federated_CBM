@@ -22,8 +22,7 @@ if __name__ == '__main__':
     input_args = parser.parse_args()
     args_linear = {
         # Hierarchical params
-        'delta': 1, 
-        'mu_mu': np.array([10]), 'Sigma_mu': np.array([10]), # Prior of mu
+        'delta': 1, 'mu_mu': np.array([10]), 'Sigma_mu': np.array([10]), # Prior of mu
         'alpha_Sigma': np.array([3]) , 'beta_Sigma': np.array([20]), # Prior of Sigma
         'sigma0': np.array([2]), 'l_0': np.array([0]), 
         'mu_true': np.array([2]), 'Sigma_true': np.array([0.001]),

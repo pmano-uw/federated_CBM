@@ -2,6 +2,7 @@ figure/
 # Changed to /* to allow exceptions inside
 *.json
 history/*
+*.pdf
 
 # Python compiled files
 __pycache__/
@@ -19,7 +20,6 @@ venv/
 
 # Data files 
 *.txt   
-dataset/
 quad_dsignal_env/
 plot/
 quadratic_degradation_mcmc/

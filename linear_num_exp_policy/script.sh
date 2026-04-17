@@ -21,7 +21,7 @@ for noise in 1 3; do
     python3 main.py --savelog --experiment="collaborative" --lap-noise=$noise --dataset "nasa1" --output-dir "$RUN_DIR"
 done
 
-for experiment in EP isolated; do
+for experiment in collaborative EP isolated; do
     echo "Running algorithm: $experiment (dataset=nasa1, lap_noise=0)" && \
     python3 main.py --savelog --experiment=$experiment --dataset "nasa1" --output-dir "$RUN_DIR"
 done

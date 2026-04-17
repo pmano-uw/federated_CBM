@@ -19,7 +19,8 @@ def run_sim_linear(args):
     d = args['d']
 
     # Import data and scale by 100
-    df = load_data(args)
+    df, thresholds = load_data(args)
+    args['r_limit'] = thresholds['conservative_failure']    
 
     T = df.shape[0]; N = df.shape[1] 
     args['T'] = T; args['N'] = N
@@ -50,9 +51,9 @@ def run_sim_linear(args):
         cov_initial = scipy.linalg.block_diag(args['Sigma_mu']**2, var_Sigma)
 
     # Specify the model
-    with suppress_stdout_stderr():
-        hybrid_dist_model = CmdStanModel(stan_file="stan_file/hybrid_posterior.stan", model_name="hybrid_distribution")
-        predictive_model = CmdStanModel(stan_file="stan_file/predictive_posterior.stan", model_name="predictive_posterior")
+    # with suppress_stdout_stderr():
+    hybrid_dist_model = CmdStanModel(stan_file="stan_file/hybrid_posterior.stan", model_name="hybrid_distribution")
+    predictive_model = CmdStanModel(stan_file="stan_file/predictive_posterior.stan", model_name="predictive_posterior")
 
     # Specify noise
     small_noise = 1
