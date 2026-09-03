@@ -1,0 +1,27 @@
+digraph {
+	subgraph cluster2 {
+		tau [label="tau
+~
+LogNormal" shape=ellipse]
+		mu [label="mu
+~
+MvNormal" shape=ellipse]
+		label=2 labeljust=r labelloc=b style=rounded
+	}
+	subgraph cluster4 {
+		phi_ll [label="phi_ll
+~
+MvNormal" shape=ellipse style=filled]
+		label=4 labeljust=r labelloc=b style=rounded
+	}
+	subgraph cluster1 {
+		obs [label="obs
+~
+Normal" shape=ellipse style=filled]
+		label=1 labeljust=r labelloc=b style=rounded
+	}
+	tau -> phi_ll
+	mu -> phi_ll
+	tau -> obs
+	mu -> obs
+}
